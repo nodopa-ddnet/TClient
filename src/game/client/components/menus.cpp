@@ -2416,10 +2416,6 @@ void CMenus::SetActive(bool Active)
 	}
 }
 
-void CMenus::OnReset()
-{
-}
-
 void CMenus::OnShutdown()
 {
 	m_CommunityIcons.Shutdown();
