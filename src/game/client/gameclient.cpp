@@ -368,6 +368,20 @@ void CGameClient::OnInit()
 
 	// propagate pointers
 	m_UI.Init(Kernel());
+	m_UI.SetOnBackButtonPressedCallback([this]() {
+		m_BackButtonHandledKeyBind = m_KeyBinder.HasPendingKeyReader();
+		if(m_BackButtonHandledKeyBind)
+			m_KeyBinder.AbortPendingKey();
+	});
+	m_UI.SetDispatchInputCallback([this](const IInput::CEvent &Event) {
+		if(m_BackButtonHandledKeyBind)
+		{
+			if(Event.m_Flags & IInput::FLAG_RELEASE)
+				m_BackButtonHandledKeyBind = false;
+			return;
+		}
+		OnInput(Event);
+	});
 	m_RenderTools.Init(Graphics(), TextRender(), this); // TClient
 	m_RenderMap.Init(Graphics(), TextRender());
 
@@ -518,13 +532,7 @@ void CGameClient::OnUpdate()
 
 	// handle key presses
 	Input()->ConsumeEvents([&](const IInput::CEvent &Event) {
-		for(auto &pComponent : m_vpInput)
-		{
-			// Events with flag `FLAG_RELEASE` must always be forwarded to all components so keys being
-			// released can be handled in all components also after some components have been disabled.
-			if(pComponent->OnInput(Event) && (Event.m_Flags & ~IInput::FLAG_RELEASE) != 0)
-				break;
-		}
+		OnInput(Event);
 	});
 
 	if(g_Config.m_ClSubTickAiming && m_Binds.m_MouseOnAction)
@@ -536,6 +544,17 @@ void CGameClient::OnUpdate()
 	for(auto &pComponent : m_vpAll)
 	{
 		pComponent->OnUpdate();
+	}
+}
+
+void CGameClient::OnInput(const IInput::CEvent &Event)
+{
+	for(auto &pComponent : m_vpInput)
+	{
+		// Events with flag `FLAG_RELEASE` must always be forwarded to all components so keys being
+		// released can be handled in all components also after some components have been disabled.
+		if(pComponent->OnInput(Event) && (Event.m_Flags & ~IInput::FLAG_RELEASE) != 0)
+			break;
 	}
 }
 
