@@ -2078,7 +2078,9 @@ public:
 				GotNewLineLast = true;
 			}
 			else
+			{
 				GotNewLineLast = false;
+			}
 		}
 
 		if(!TextContainer.m_StringInfo.m_vCharacterQuads.empty() && IsRendered)
@@ -2282,7 +2284,9 @@ public:
 					Graphics()->QuadsDrawCurrentVertices(false);
 				}
 				else
+				{
 					Graphics()->QuadsEnd();
+				}
 
 				// reset
 				Graphics()->SetColor(1.f, 1.f, 1.f, 1.f);
