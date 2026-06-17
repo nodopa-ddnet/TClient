@@ -15,7 +15,7 @@ typedef enum EDiscordResult(DISCORD_API *FDiscordCreate)(DiscordVersion, struct 
 
 #if defined(CONF_DISCORD_DYNAMIC)
 #include <dlfcn.h>
-FDiscordCreate GetDiscordCreate()
+static FDiscordCreate GetDiscordCreate()
 {
 	void *pSdk = dlopen("discord_game_sdk.so", RTLD_NOW);
 	if(!pSdk)
@@ -25,7 +25,7 @@ FDiscordCreate GetDiscordCreate()
 	return (FDiscordCreate)dlsym(pSdk, "DiscordCreate");
 }
 #else
-FDiscordCreate GetDiscordCreate()
+static FDiscordCreate GetDiscordCreate()
 {
 	return DiscordCreate;
 }
@@ -56,8 +56,8 @@ public:
 		if(m_pCore)
 		{
 			m_pCore->destroy(m_pCore);
-			m_pCore = 0;
-			m_pActivityManager = 0;
+			m_pCore = nullptr;
+			m_pActivityManager = nullptr;
 		}
 		if(!m_Enabled)
 			return false;
@@ -65,7 +65,7 @@ public:
 		mem_zero(&m_ActivityEvents, sizeof(m_ActivityEvents));
 
 		m_ActivityEvents.on_activity_join = &CDiscord::OnActivityJoin;
-		m_pActivityManager = 0;
+		m_pActivityManager = nullptr;
 
 		DiscordCreateParams Params;
 		DiscordCreateParamsSetDefault(&Params);
@@ -111,7 +111,7 @@ public:
 				m_UpdateActivity = false;
 				m_LastActivityUpdate = time_get();
 
-				m_pActivityManager->update_activity(m_pActivityManager, &m_Activity, 0, 0);
+				m_pActivityManager->update_activity(m_pActivityManager, &m_Activity, nullptr, nullptr);
 			}
 
 			m_pCore->run_callbacks(m_pCore);
@@ -215,8 +215,8 @@ public:
 	static void DISCORD_CALLBACK OnActivityJoin(void *pEventData, const char *pSecret)
 	{
 		CDiscord *pSelf = static_cast<CDiscord *>(pEventData);
-		IClient *m_pClient = pSelf->Kernel()->RequestInterface<IClient>();
-		m_pClient->Connect(pSecret);
+		IClient *pClient = pSelf->Kernel()->RequestInterface<IClient>();
+		pClient->Connect(pSecret);
 	}
 
 	~CDiscord()
@@ -231,13 +231,13 @@ static IDiscord *CreateDiscordImpl()
 	FDiscordCreate pfnDiscordCreate = GetDiscordCreate();
 	if(!pfnDiscordCreate)
 	{
-		return 0;
+		return nullptr;
 	}
 	CDiscord *pDiscord = new CDiscord();
 	if(pDiscord->Init(pfnDiscordCreate))
 	{
 		delete pDiscord;
-		return 0;
+		return nullptr;
 	}
 	return pDiscord;
 }
