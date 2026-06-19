@@ -369,6 +369,7 @@ void CGameClient::OnInit()
 		OnInput(Event);
 	});
 	m_RenderTools.Init(Graphics(), TextRender(), this); // TClient
+	// m_RenderTools.Init(Graphics(), TextRender());
 	m_RenderMap.Init(Graphics(), TextRender());
 
 	if(GIT_SHORTREV_HASH)
