@@ -170,7 +170,7 @@ void CMovingTiles::OnRender()
 				(int)std::round(Bottom * Graphics()->ScreenHeight() / ScreenHeight) - ClipY);
 		}
 
-		const int ParallaxZoom = std::clamp(maximum(pGroup->m_ParallaxX, pGroup->m_ParallaxY), 0, 100);
+		const int ParallaxZoom = std::clamp(std::max(pGroup->m_ParallaxX, pGroup->m_ParallaxY), 0, 100);
 		float aPoints[4];
 		Graphics()->MapScreenToWorld(
 			Center.x, Center.y,
