@@ -922,28 +922,15 @@ set_glob(RUST_ENGINE_SHARED GLOB_RECURSE "rs;toml" src/engine/shared
   config.rs
   lib.rs
   rust_version.rs
-  snapshot/builder.rs
-  snapshot/delta.rs
-  snapshot/mod.rs
-  uuid_manager.rs
   # tidy-alphabetical-end
 )
 
 set_src(RUST_BRIDGE_SHARED GLOB_RECURSE src/rust-bridge
   # tidy-alphabetical-start
-  base/cxx.h
   cpp/console.cpp
   cpp/console.h
-  cpp/snapshot.cpp
-  cpp/snapshot.h
-  cpp/uuid_manager.cpp
-  cpp/uuid_manager.h
   engine/shared/rust_version.cpp
   engine/shared/rust_version.h
-  engine/shared/snapshot/builder.cpp
-  engine/shared/snapshot/builder.h
-  engine/shared/snapshot/delta.cpp
-  engine/shared/snapshot/delta.h
   # tidy-alphabetical-end
 )
 
@@ -958,7 +945,6 @@ set_glob(RUST_MASTERSRV GLOB "rs;toml" src/mastersrv/src
 )
 
 add_library(rust-bridge-shared EXCLUDE_FROM_ALL OBJECT ${RUST_BRIDGE_SHARED})
-add_dependencies(rust-bridge-shared generate_protocol)
 list(APPEND TARGETS_OWN rust-bridge-shared)
 
 if(TARGET_OS STREQUAL "android")
@@ -2382,6 +2368,7 @@ set_src(ENGINE_SHARED GLOB_RECURSE src/engine/shared
   ringbuffer.h
   serverinfo.cpp
   serverinfo.h
+  sixup_translate_snapshot.cpp
   snapshot.cpp
   snapshot.h
   storage.cpp
@@ -2856,6 +2843,8 @@ if(CLIENT)
     mapitems.h
     mapitems/envelope.cpp
     mapitems/envelope.h
+    mapitems/envelope_evaluator.cpp
+    mapitems/envelope_evaluator.h
     mapitems/image.cpp
     mapitems/image.h
     mapitems/layer.cpp
@@ -2951,6 +2940,7 @@ if(CLIENT)
     ${OGG_LIBRARIES}
 
     ${TARGET_STEAMAPI}
+    rust_engine_shared
 
     ${PLATFORM_CLIENT_LIBS}
     ${LIBS}
@@ -3226,6 +3216,7 @@ if(SERVER)
     ${MINIUPNPC_LIBRARIES}
     ${MYSQL_LIBRARIES}
     ${TARGET_ANTIBOT}
+    rust_engine_shared
 
     ${LIBS}
   )
@@ -3362,7 +3353,6 @@ if(TOOLS)
         # tidy-alphabetical-start
         $<TARGET_OBJECTS:engine-shared>
         $<TARGET_OBJECTS:game-shared>
-        $<TARGET_OBJECTS:rust-bridge-shared>
         # tidy-alphabetical-end
       )
       target_include_directories(${TOOL} SYSTEM PRIVATE ${TOOL_INCLUDE_DIRS})

@@ -348,7 +348,7 @@ void CMenus::RenderSettingsPlayer(CUIRect MainView)
 		FlagRect.x += (OldWidth - FlagRect.w) / 2.0f;
 		GameClient()->m_CountryFlags.Render(pEntry->m_CountryCode, ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f), FlagRect.x, FlagRect.y, FlagRect.w, FlagRect.h);
 
-		if(pEntry->m_Texture.IsValid() || pEntry->m_CountryCode == -1)
+		if(pEntry->m_Texture.IsValid() || pEntry->m_CountryCode == CountryCode::DEFAULT)
 		{
 			Ui()->DoLabel(&Label, pEntry->m_aCountryCodeString, 10.0f, TEXTALIGN_MC);
 		}
@@ -551,7 +551,7 @@ void CMenus::RenderSettingsTee(CUIRect MainView)
 		const vec2 DeltaPosition = Ui()->MousePos() - TeeRenderPos;
 		const float Distance = length(DeltaPosition);
 		const float InteractionDistance = 20.0f;
-		const vec2 TeeDirection = Distance < InteractionDistance ? normalize(vec2(DeltaPosition.x, maximum(DeltaPosition.y, 0.5f))) : normalize(DeltaPosition);
+		const vec2 TeeDirection = Distance < InteractionDistance ? normalize(vec2(DeltaPosition.x, std::max(DeltaPosition.y, 0.5f))) : normalize(DeltaPosition);
 		const int TeeEmote = Distance < InteractionDistance ? EMOTE_HAPPY : *pEmote;
 		RenderTools()->RenderTee(CAnimState::GetIdle(), &OwnSkinInfo, TeeEmote, TeeDirection, TeeRenderPos);
 	}
