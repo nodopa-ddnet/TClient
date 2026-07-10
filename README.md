@@ -275,7 +275,7 @@ tc_spec_menu_ID
 tc_limit_mouse_to_screen
 ```
 
-If you distribution doesn't ship with a `rustc` that is new enough, you can use `rustup` which automatically provides `rustc` 1.85.0 and above (this command removes `rustc` and reinstalls it as part of `rustup`.):
+If your distribution doesn't ship with a `rustc` that is new enough, you can use `rustup` which automatically provides `rustc` 1.85.0 and above (this command removes `rustc` and reinstalls it as part of `rustup`.):
 ```sh
 sudo apt install rustup
 ```
