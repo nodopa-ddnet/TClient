@@ -342,16 +342,16 @@ void CMenus::RenderSettingsPlayer(CUIRect MainView)
 
 	int SelectedOld = -1;
 	static CListBox s_ListBox;
-	s_ListBox.DoStart(48.0f, vFilteredFlags.size(), 10, 3, OldSelected, &MainView);
+	s_ListBox.DoStart(48.0f, vFilteredFlags.size(), 10, 3, SelectedOld, &MainView);
 
 	for(size_t i = 0; i < vFilteredFlags.size(); i++)
 	{
 		const CCountryFlagEntry &Entry = vFilteredFlags[i];
 
 		if(Entry.m_pFlag->m_CountryCode == *pCountry)
-			OldSelected = i;
+			SelectedOld = i;
 
-		const CListboxItem Item = s_ListBox.DoNextItem(&Entry.m_pFlag->m_CountryCode, OldSelected >= 0 && (size_t)OldSelected == i);
+		const CListboxItem Item = s_ListBox.DoNextItem(&Entry.m_pFlag->m_CountryCode, SelectedOld >= 0 && (size_t)OldSelected == i);
 		if(!Item.m_Visible)
 			continue;
 
