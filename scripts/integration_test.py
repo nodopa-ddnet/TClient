@@ -5,7 +5,7 @@ from threading import Thread
 from time import time
 from urllib import request
 from urllib.request import Request, urlopen
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
 import io
 import json
 import os
@@ -126,7 +126,7 @@ class TestRunner:
 		self.timeout_multiplier = timeout_multiplier
 		self.valgrind_memcheck = valgrind_memcheck
 		if self.valgrind_memcheck:
-			self.timeout_multiplier *= 20
+			self.timeout_multiplier *= 25
 
 	def run_test(self, test):
 		tmp_dir = tempfile.mkdtemp(prefix=f"integration_{test.name}_", dir=self.test_dir)
@@ -412,7 +412,7 @@ class Runnable:
 		while True:
 			event = self.next_event(timeout_id)
 			if isinstance(event, Exit):
-				raise EOFError(f"program exited unexpectedly waiting for {description}")
+				raise EOFError(f"program exited unexpectedly waiting for {description}")  # noqa: TRY004 type-check-without-type-error
 			elif isinstance(event, Log):
 				if fn(event):
 					return event
@@ -726,7 +726,7 @@ def smoke_test(test_env):
 	client1.command("stdout_output_level 2; loglevel 2")
 	client1.command(f"connect localhost:{server.port}")
 	server.wait_for_log_prefix("server: player has entered the game", timeout=10)
-	client1.wait_for_log_exact("client: state change. last=2 current=3", timeout=15)
+	client1.wait_for_log_exact("client: state change. last=2 current=3", timeout=30)
 	client1.command("stdout_output_level 0; loglevel 0")
 	client1.command("debug 0")
 	client1.command("record client1")
@@ -741,10 +741,10 @@ def smoke_test(test_env):
 		)
 
 	client1.command("say hello world")
-	server.wait_for_log_exact("chat: 0:-2:client1: hello world")
+	server.wait_for_log_exact("chat: 0:-2:client1: hello world", timeout=15)
 
 	client1.command(f"rcon_auth {server.rcon_password}")
-	server.wait_for_log_exact("server: ClientId=0 authed with key='default_admin' (admin)")
+	server.wait_for_log_exact("server: ClientId=0 authed with key='default_admin' (admin)", timeout=15)
 
 	client1.command(
 		'say "/mc; {}"'.format(

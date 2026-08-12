@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12...3.27.4)
 
-set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE INTERNAL "Minimum macOS deployment version")
+set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "Minimum macOS deployment version")
 if(CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS 10.15)
   message(WARNING "Building for macOS < 10.15 is not supported")
 endif()
@@ -145,7 +145,7 @@ option(VULKAN "Enable the vulkan backend" ${AUTO_VULKAN_BACKEND})
 
 option(EXCEPTION_HANDLING "Enable crashdumps (only works with Windows)" OFF)
 option(IPO "Enable interprocedural optimizations" OFF)
-option(FUSE_LD "Linker to use" OFF)
+set(FUSE_LD OFF CACHE STRING "Linker to use")
 option(SECURITY_COMPILER_FLAGS "Whether to set security-relevant compiler flags like -D_FORTIFY_SOURCE=2 and -fstack-protector-strong" ON)
 option(MACOS_CODESIGN "Whether to sign code when building the DMG on macOS" OFF)
 set(EXTERNAL_STEAM_API_DYLIB "" CACHE FILEPATH "Path to an external libsteam_api.dylib to package instead of the built stub")
@@ -154,8 +154,14 @@ if(EXTERNAL_STEAM_API_DYLIB AND NOT EXISTS "${EXTERNAL_STEAM_API_DYLIB}")
   message(FATAL_ERROR "EXTERNAL_STEAM_API_DYLIB does not exist: ${EXTERNAL_STEAM_API_DYLIB}")
 endif()
 
-if(TARGET_OS STREQUAL "mac" AND DEFINED ENV{MACOS_APP_IDENTITY})
-  set(MACOS_APP_IDENTITY "$ENV{MACOS_APP_IDENTITY}")
+if(TARGET_OS STREQUAL "mac" AND MACOS_CODESIGN)
+  if(DEFINED ENV{MACOS_APP_IDENTITY})
+    message(STATUS "Using MACOS_APP_IDENTITY as codesign signature")
+    set(MACOS_APP_IDENTITY "$ENV{MACOS_APP_IDENTITY}")
+  else()
+    message(WARNING "MACOS_APP_IDENTITY environment variable not defined. Using ad-hoc signature")
+    set(MACOS_APP_IDENTITY "-") # ad-hoc signature
+  endif()
 endif()
 
 if(TARGET_OS STREQUAL "android")
@@ -312,15 +318,21 @@ if(NOT MSVC AND NOT HAIKU)
     endif()
   endif()
 
-  if(TARGET_OS STREQUAL "mac")
-    add_cxx_compiler_flag_if_supported(OUR_FLAGS_OWN -std=gnu++20)
-  endif()
-
   if(SECURITY_COMPILER_FLAGS)
     # Protect the stack pointer.
     add_cxx_compiler_flag_if_supported(OUR_FLAGS -fstack-protector-strong)
     if(MINGW)
       add_linker_flag_if_supported(OUR_FLAGS_LINK -lssp)
+    endif()
+    # Protect against stack clash attacks by probing every page of large stack allocations.
+    add_cxx_compiler_flag_if_supported(OUR_FLAGS -fstack-clash-protection)
+    # Forward-edge control-flow protection (CET on x86, BTI/PAC on aarch64).
+    add_cxx_compiler_flag_if_supported(OUR_FLAGS -fcf-protection=full)
+    add_cxx_compiler_flag_if_supported(OUR_FLAGS -mbranch-protection=standard)
+    if(NOT TARGET_OS STREQUAL "windows" AND NOT TARGET_OS STREQUAL "mac")
+      # Resolve all dynamic symbols at startup and make the GOT read-only afterwards (full RELRO).
+      add_linker_flag_if_supported(OUR_FLAGS_LINK -Wl,-z,relro)
+      add_linker_flag_if_supported(OUR_FLAGS_LINK -Wl,-z,now)
     endif()
   endif()
 
@@ -353,10 +365,6 @@ if(NOT MSVC AND NOT HAIKU)
     add_cxx_compiler_flag_if_supported(OUR_FLAGS -ffile-prefix-map=${CMAKE_SOURCE_DIR}=/${CMAKE_PROJECT_NAME})
     add_cxx_compiler_flag_if_supported(OUR_FLAGS -ffile-prefix-map=${PROJECT_BINARY_DIR}=/${CMAKE_PROJECT_NAME})
     add_cxx_compiler_flag_if_supported(OUR_FLAGS -fno-ident)
-  endif()
-
-  if(TARGET_OS STREQUAL "mac")
-    add_cxx_compiler_flag_if_supported(OUR_FLAGS -stdlib=libc++)
   endif()
 
   if(EXCEPTION_HANDLING)
@@ -399,7 +407,17 @@ if(NOT MSVC AND NOT HAIKU)
 endif()
 
 if(NOT MSVC AND NOT HAIKU AND SECURITY_COMPILER_FLAGS)
-  check_c_compiler_flag("-O2;-Wp,-Werror;-D_FORTIFY_SOURCE=2" DEFINE_FORTIFY_SOURCE) # Some distributions define _FORTIFY_SOURCE by themselves.
+  # Use the highest level the compiler lets us set
+  check_c_compiler_flag("-O2;-Wp,-Werror;-D_FORTIFY_SOURCE=3" DEFINE_FORTIFY_SOURCE_3)
+  check_c_compiler_flag("-O2;-Wp,-Werror;-D_FORTIFY_SOURCE=2" DEFINE_FORTIFY_SOURCE)
+  if(NOT CMAKE_VERSION VERSION_LESS 3.14 AND NOT TARGET_OS STREQUAL "emscripten")
+    # Build position-independent executables so the main binary image participates in ASLR.
+    include(CheckPIESupported)
+    check_pie_supported(LANGUAGES C CXX)
+    if(CMAKE_C_LINK_PIE_SUPPORTED AND CMAKE_CXX_LINK_PIE_SUPPORTED)
+      set(ENABLE_PIE TRUE)
+    endif()
+  endif()
 endif()
 
 ########################################################################
@@ -551,7 +569,9 @@ if(TARGET_OS STREQUAL "android")
 endif()
 find_package(ZLIB)
 find_package(Crypto)
-find_package(Curl)
+if(NOT TARGET_OS STREQUAL "emscripten")
+  find_package(Curl)
+endif()
 if(CLIENT AND VIDEORECORDER)
   find_package(FFMPEG)
 endif()
@@ -641,7 +661,9 @@ function(show_dependency_status OUTPUT_NAME NAME)
   endif()
 endfunction()
 
-show_dependency_status("Curl" CURL)
+if(NOT TARGET_OS STREQUAL "emscripten")
+  show_dependency_status("Curl" CURL)
+endif()
 if(CLIENT AND VIDEORECORDER)
   show_dependency_status("FFmpeg" FFMPEG)
 endif()
@@ -680,8 +702,7 @@ endif()
 if(CLIENT AND VULKAN)
   show_dependency_status("Vulkan" VULKAN)
 endif()
-
-if(NOT(CURL_FOUND))
+if(NOT(CURL_FOUND) AND NOT TARGET_OS STREQUAL "emscripten")
   message(SEND_ERROR "You must install Curl to compile ${CMAKE_PROJECT_NAME}")
 endif()
 if(NOT(Python3_FOUND))
@@ -868,6 +889,9 @@ if(NOT(GTEST_FOUND) AND DOWNLOAD_GTEST)
           # when MSVS adds new warnings.
           target_compile_options(${target} PRIVATE /w)
         endif()
+        # Do not apply clang-tidy to googletest targets.
+        set_property(TARGET ${target} PROPERTY C_CLANG_TIDY "")
+        set_property(TARGET ${target} PROPERTY CXX_CLANG_TIDY "")
       endforeach()
 
       set(GTEST_LIBRARIES gtest gmock)
@@ -2062,7 +2086,9 @@ set(COPY_FILES
   # tidy-alphabetical-end
 )
 if(TARGET_OS STREQUAL "emscripten")
+  list(APPEND COPY_FILES other/emscripten/background.png)
   list(APPEND COPY_FILES other/emscripten/index.html)
+  list(APPEND COPY_FILES other/icons/DDNet.ico)
 endif()
 file(COPY ${COPY_FILES} DESTINATION .)
 
@@ -2225,6 +2251,7 @@ set_src(BASE GLOB_RECURSE src/base
   lock.h
   log.cpp
   log.h
+  log_color.h
   logger.h
   math.h
   mem.cpp
@@ -2274,6 +2301,7 @@ set_src(ENGINE_INTERFACE GLOB src/engine
   ghost.h
   graphics.cpp
   graphics.h
+  http.cpp
   http.h
   image.h
   input.h
@@ -2325,8 +2353,10 @@ set_src(ENGINE_SHARED GLOB_RECURSE src/engine/shared
   global_uuid_manager.cpp
   host_lookup.cpp
   host_lookup.h
-  http.cpp
-  http.h
+  http_curl.cpp
+  http_curl.h
+  http_emscripten.cpp
+  http_emscripten.h
   huffman.cpp
   huffman.h
   jobs.cpp
@@ -2678,10 +2708,19 @@ if(CLIENT)
     components/menus_ingame_touch_controls.cpp
     components/menus_ingame_touch_controls.h
     components/menus_settings.cpp
-    components/menus_settings7.cpp
+    components/menus_settings_appearance.cpp
     components/menus_settings_assets.cpp
     components/menus_settings_controls.cpp
     components/menus_settings_controls.h
+    components/menus_settings_credits.cpp
+    components/menus_settings_ddnet.cpp
+    components/menus_settings_general.cpp
+    components/menus_settings_graphics.cpp
+    components/menus_settings_language.cpp
+    components/menus_settings_player.cpp
+    components/menus_settings_sound.cpp
+    components/menus_settings_tee.cpp
+    components/menus_settings_tee7.cpp
     components/menus_start.cpp
     components/menus_start.h
     components/motd.cpp
@@ -3050,7 +3089,7 @@ if(CLIENT)
     set_own_rpath(game-client)
   endif()
 
-  set(PARAMS "${WAVPACK_INCLUDE_DIRS};${WAVPACK_INCLUDE_DIRS}")
+  set(PARAMS "${WAVPACK_INCLUDE_DIRS};${WAVPACK_LIBRARIES}")
   if(NOT(WAVPACK_OPEN_FILE_INPUT_EX_PARAMS STREQUAL PARAMS))
     unset(WAVPACK_OPEN_FILE_INPUT_EX CACHE)
   endif()
@@ -3173,6 +3212,8 @@ if(SERVER)
     mutes.cpp
     player.cpp
     player.h
+    playermapping.cpp
+    playermapping.h
     save.cpp
     save.h
     score.cpp
@@ -3434,9 +3475,11 @@ if((GTEST_FOUND OR DOWNLOAD_GTEST) AND SERVER)
     mapitems_test.cpp
     math_test.cpp
     mem_test.cpp
+    mutes_test.cpp
     name_ban_test.cpp
     net_test.cpp
     netaddr_test.cpp
+    network_test.cpp
     os_test.cpp
     packer_test.cpp
     prng_test.cpp
@@ -3799,9 +3842,11 @@ endif()
 set(PACKAGE_TARGETS)
 if(CLIENT AND DMGBUILD_FOUND)
   file(MAKE_DIRECTORY bundle/client/)
-  file(MAKE_DIRECTORY bundle/server/)
   configure_file(other/bundle/client/Info.plist.in bundle/client/Info.plist)
-  configure_file(other/bundle/server/Info.plist.in bundle/server/Info.plist)
+  if(SERVER)
+    file(MAKE_DIRECTORY bundle/server/)
+    configure_file(other/bundle/server/Info.plist.in bundle/server/Info.plist)
+  endif()
 
   set(DMG_TMPDIR pack_${CPACK_PACKAGE_FILE_NAME}_dmg)
   set(DMG_MKDIRS
@@ -3811,14 +3856,20 @@ if(CLIENT AND DMGBUILD_FOUND)
     ${CLIENT_EXECUTABLE}.app/Contents/Frameworks
     ${CLIENT_EXECUTABLE}.app/Contents/MacOS
     ${CLIENT_EXECUTABLE}.app/Contents/Resources
-    ${SERVER_EXECUTABLE}.app
-    ${SERVER_EXECUTABLE}.app/Contents
-    ${SERVER_EXECUTABLE}.app/Contents/MacOS
-    ${SERVER_EXECUTABLE}.app/Contents/Resources
-    ${SERVER_EXECUTABLE}.app/Contents/Resources/data
-    ${SERVER_EXECUTABLE}.app/Contents/Resources/data/mapres
     # tidy-alphabetical-end
   )
+  if(SERVER)
+    list(APPEND DMG_MKDIRS
+      # tidy-alphabetical-start
+      ${SERVER_EXECUTABLE}.app
+      ${SERVER_EXECUTABLE}.app/Contents
+      ${SERVER_EXECUTABLE}.app/Contents/MacOS
+      ${SERVER_EXECUTABLE}.app/Contents/Resources
+      ${SERVER_EXECUTABLE}.app/Contents/Resources/data
+      ${SERVER_EXECUTABLE}.app/Contents/Resources/data/mapres
+      # tidy-alphabetical-end
+    )
+  endif()
   set(DMG_MKDIR_COMMANDS)
   foreach(dir ${DMG_MKDIRS})
     list(APPEND DMG_MKDIR_COMMANDS COMMAND ${CMAKE_COMMAND} -E make_directory ${DMG_TMPDIR}/${dir})
@@ -3835,7 +3886,7 @@ if(CLIENT AND DMGBUILD_FOUND)
     set(STEAM_API_DYLIB_FOR_PACKAGE "${PROJECT_BINARY_DIR}/libsteam_api.dylib")
   endif()
 
-  if(NOT MACOS_CODESIGN STREQUAL OFF)
+  if(MACOS_CODESIGN)
     set(CODESIGN_COMMANDS
         # tidy-alphabetical-start
         COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/Frameworks/SDL2.framework
@@ -3855,19 +3906,59 @@ if(CLIENT AND DMGBUILD_FOUND)
           COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${target}
       )
     endforeach()
+    if(SERVER)
+      list(APPEND CODESIGN_COMMANDS
+          COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE}
+      )
+    endif()
     list(APPEND CODESIGN_COMMANDS
-        COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE}
         COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${CLIENT_EXECUTABLE}
-        COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE}
 
         COMMAND codesign --force --options runtime --timestamp --deep --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app
-        COMMAND codesign --force --options runtime --timestamp --deep --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app
-        # Verify signatures
+        # Verify signature
         COMMAND codesign --verify --deep --strict --verbose=2 "${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app"
-        COMMAND codesign --verify --deep --strict --verbose=2 "${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app"
     )
+    if(SERVER)
+      list(APPEND CODESIGN_COMMANDS
+        COMMAND codesign --force --options runtime --timestamp --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE}
+
+        COMMAND codesign --force --options runtime --timestamp --deep --sign "${MACOS_APP_IDENTITY}" ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app
+        # Verify signature
+        COMMAND codesign --verify --deep --strict --verbose=2 "${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app"
+      )
+    endif()
   else()
     set(CODESIGN_COMMANDS)
+  endif()
+
+  if(SERVER)
+    set(DMG_SERVER_COMMANDS
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/data/maps ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/Resources/data/maps
+      COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/other/icons/${SERVER_EXECUTABLE}.icns ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/Resources/
+      COMMAND ${CMAKE_COMMAND} -E copy bundle/server/Info.plist ${PROJECT_SOURCE_DIR}/other/bundle/server/PkgInfo ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:game-server> $<TARGET_FILE:game-server-launcher> ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/MacOS/
+      COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/darwin_strip_rpath.py ${CMAKE_OTOOL} ${CMAKE_INSTALL_NAME_TOOL} ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE}
+      COMMAND ${CMAKE_COMMAND} -E copy ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE} ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE}
+    )
+    set(DMG_SERVER_DEPENDS
+      game-server-launcher
+      game-server
+      ${PROJECT_BINARY_DIR}/bundle/server/Info.plist
+      # tidy-alphabetical-start
+      other/bundle/server/PkgInfo
+      other/dmgbackground.png
+      other/icons/${SERVER_EXECUTABLE}.icns
+      # tidy-alphabetical-end
+    )
+    set(DMGBUILD_COMMAND
+      COMMAND dmgbuild -s ${PROJECT_SOURCE_DIR}/other/dmgsettings.py -D client=${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app -D server=${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app -D background=${PROJECT_SOURCE_DIR}/other/dmgbackground.png "${CPACK_PACKAGE_NAME} ${CPACK_PACKAGE_VERSION}" ${CPACK_PACKAGE_FILE_NAME}.dmg
+    )
+  else()
+    set(DMG_SERVER_COMMANDS)
+    set(DMG_SERVER_DEPENDS other/dmgbackground_single.png)
+    set(DMGBUILD_COMMAND
+      COMMAND dmgbuild -s ${PROJECT_SOURCE_DIR}/other/dmgsettings.py -D client=${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app -D background=${PROJECT_SOURCE_DIR}/other/dmgbackground_single.png "${CPACK_PACKAGE_NAME} ${CPACK_PACKAGE_VERSION}" ${CPACK_PACKAGE_FILE_NAME}.dmg
+    )
   endif()
 
   add_custom_command(OUTPUT ${CPACK_PACKAGE_FILE_NAME}.dmg
@@ -3895,33 +3986,23 @@ if(CLIENT AND DMGBUILD_FOUND)
     COMMAND ${CMAKE_INSTALL_NAME_TOOL} -add_rpath @loader_path/../Frameworks ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${CLIENT_EXECUTABLE}
 
     # SERVER
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/data/maps ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/Resources/data/maps
-    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/other/icons/${SERVER_EXECUTABLE}.icns ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/Resources/
-    COMMAND ${CMAKE_COMMAND} -E copy bundle/server/Info.plist ${PROJECT_SOURCE_DIR}/other/bundle/server/PkgInfo ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:game-server> $<TARGET_FILE:game-server-launcher> ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/MacOS/
-    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/darwin_strip_rpath.py ${CMAKE_OTOOL} ${CMAKE_INSTALL_NAME_TOOL} ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE}
-    COMMAND ${CMAKE_COMMAND} -E copy ${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE} ${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app/Contents/MacOS/${SERVER_EXECUTABLE}
+    ${DMG_SERVER_COMMANDS}
 
     ${CODESIGN_COMMANDS}
 
     # DMG
-    COMMAND dmgbuild -s ${PROJECT_SOURCE_DIR}/other/dmgsettings.py -D client=${DMG_TMPDIR}/${CLIENT_EXECUTABLE}.app -D server=${DMG_TMPDIR}/${SERVER_EXECUTABLE}.app -D background=${PROJECT_SOURCE_DIR}/other/dmgbackground.png "${CPACK_PACKAGE_NAME} ${CPACK_PACKAGE_VERSION}" ${CPACK_PACKAGE_FILE_NAME}.dmg
+    ${DMGBUILD_COMMAND}
 
     DEPENDS
       game-client
       ${TARGET_STEAMAPI}
-      game-server-launcher
-      game-server
       ${PROJECT_BINARY_DIR}/bundle/client/Info.plist
-      ${PROJECT_BINARY_DIR}/bundle/server/Info.plist
+      ${DMG_SERVER_DEPENDS}
       # tidy-alphabetical-start
       data
       other/bundle/client/PkgInfo
-      other/bundle/server/PkgInfo
-      other/dmgbackground.png
       other/dmgsettings.py
       other/icons/${CLIENT_EXECUTABLE}.icns
-      other/icons/${SERVER_EXECUTABLE}.icns
       # tidy-alphabetical-end
   )
   add_custom_target(package_dmg DEPENDS ${CPACK_PACKAGE_FILE_NAME}.dmg)
@@ -4053,15 +4134,20 @@ foreach(target ${TARGETS})
   if(OUR_FLAGS)
     target_compile_options(${target} PRIVATE ${OUR_FLAGS})
   endif()
-  if(DEFINE_FORTIFY_SOURCE)
+  if(DEFINE_FORTIFY_SOURCE_3 OR DEFINE_FORTIFY_SOURCE)
     if(MINGW)
       target_compile_definitions(${target} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=0>) # Currently broken in MinGW, see https://sourceforge.net/p/mingw-w64/discussion/723798/thread/b9d24f041f/
+    elseif(DEFINE_FORTIFY_SOURCE_3)
+      target_compile_definitions(${target} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=3>) # Detect some buffer overflows, including in dynamically-sized buffers.
     else()
       target_compile_definitions(${target} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>) # Detect some buffer overflows.
     endif()
   endif()
   if(ENABLE_IPO)
     set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+  endif()
+  if(ENABLE_PIE)
+    set_property(TARGET ${target} PROPERTY POSITION_INDEPENDENT_CODE TRUE)
   endif()
   if(TARGET_OS STREQUAL "emscripten")
     # Preload data directory into the filesystem
@@ -4074,7 +4160,6 @@ foreach(target ${TARGETS_LINK})
     set_property(TARGET ${target} APPEND PROPERTY LINK_FLAGS /SAFESEH:NO) # Disable SafeSEH because the shipped libraries don't support it (would cause error LNK2026 otherwise).
   endif()
   if(TARGET_OS STREQUAL "mac")
-    target_link_libraries(${target} -stdlib=libc++)
     target_link_libraries(${target} "-framework SystemConfiguration") # Required by curl 7.79.0
   endif()
   if((MINGW OR TARGET_OS STREQUAL "linux") AND PREFER_BUNDLED_LIBS)

@@ -33,6 +33,7 @@
 #include <engine/external/json-parser/json.h>
 #include <engine/favorites.h>
 #include <engine/graphics.h>
+#include <engine/http.h>
 #include <engine/input.h>
 #include <engine/keys.h>
 #include <engine/map.h>
@@ -44,7 +45,6 @@
 #include <engine/shared/demo.h>
 #include <engine/shared/fifo.h>
 #include <engine/shared/filecollection.h>
-#include <engine/shared/http.h>
 #include <engine/shared/masterserver.h>
 #include <engine/shared/network.h>
 #include <engine/shared/packer.h>
@@ -992,7 +992,7 @@ void CClient::RenderDebug()
 	const float FontSize = 16.0f;
 
 	Graphics()->TextureSet(m_DebugFont);
-	Graphics()->MapScreen(0, 0, Graphics()->ScreenWidth(), Graphics()->ScreenHeight());
+	Graphics()->MapScreenToSize(Graphics()->ScreenWidth(), Graphics()->ScreenHeight());
 	Graphics()->QuadsBegin();
 
 	str_format(aBuffer, sizeof(aBuffer), "Game/predicted tick: %d/%d", m_aCurGameTick[g_Config.m_ClDummy], m_aPredTick[g_Config.m_ClDummy]);
@@ -1106,7 +1106,7 @@ void CClient::RenderGraphs()
 		return;
 
 	// Make sure graph positions and sizes are aligned with pixels to avoid lines overlapping graph edges
-	Graphics()->MapScreen(0, 0, Graphics()->ScreenWidth(), Graphics()->ScreenHeight());
+	Graphics()->MapScreenToSize(Graphics()->ScreenWidth(), Graphics()->ScreenHeight());
 	const float GraphW = std::round(Graphics()->ScreenWidth() / 4.0f);
 	const float GraphH = std::round(Graphics()->ScreenHeight() / 6.0f);
 	const float GraphSpacing = std::round(Graphics()->ScreenWidth() / 100.0f);
@@ -2751,8 +2751,8 @@ void CClient::PumpNetwork()
 		{
 			if(Packet.m_ClientId == -1)
 			{
-				if(ResponseToken != NET_SECURITY_TOKEN_UNKNOWN)
-					PreprocessConnlessPacket7(&Packet);
+				if(ResponseToken != NET_SECURITY_TOKEN_UNKNOWN && !PreprocessConnlessPacket7(&Packet))
+					continue;
 
 				ProcessConnlessPacket(&Packet);
 				continue;

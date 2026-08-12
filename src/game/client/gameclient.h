@@ -143,6 +143,8 @@ public:
 	bool m_DDRaceTeam;
 
 	bool m_PredictEvents;
+
+	bool m_Supports128Teams;
 };
 
 class CSnapEntities
@@ -727,7 +729,7 @@ public:
 	void SendInfo(bool Start);
 	void SendDummyInfo(bool Start) override;
 	void SendKill() const;
-	void SendReadyChange7();
+	void SendReadyChange7(); // NOLINT(readability-make-member-function-const)
 
 	void ApplyPreInputs(int Tick, bool Direct, CGameWorld &GameWorld);
 	bool GetDummyFastInput(CNetObj_PlayerInput &DummyFastInput, const CNetObj_PlayerInput *pDummyInputData, const class CCharacter *pDummyChar, int LocalTee, int DummyTee) const;
@@ -756,7 +758,7 @@ public:
 	bool IsDemoPlaybackPaused() const;
 	float GetAnimationPlaybackSpeed() const;
 
-	bool AntiPingPlayers() const;
+	int AntiPingPlayers() const;
 	bool AntiPingGrenade() const;
 	bool AntiPingWeapons() const;
 	bool AntiPingGunfire() const;
@@ -999,6 +1001,7 @@ private:
 		char m_aPath[IO_MAX_PATH_LENGTH];
 		bool m_IsDefault;
 		CImageInfo m_ImageInfo;
+		std::optional<CImageInfo> m_FallbackImageInfo;
 	};
 
 	CImageAsset LoadAssetFromPath(const char *pPath, bool AsDir, int AssetId, const char *pDirectory) const;

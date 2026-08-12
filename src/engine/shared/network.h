@@ -66,7 +66,7 @@ enum
 enum
 {
 	NET_MAX_PACKETSIZE = 1400,
-	NET_MAX_PAYLOAD = NET_MAX_PACKETSIZE - 6,
+	NET_MAX_CONNLESS_PAYLOAD = NET_MAX_PACKETSIZE - 6,
 	/**
 	 * The maximum size of a chunk within a connection-oriented packet.
 	 *
@@ -76,7 +76,7 @@ enum
 	NET_MAX_CHUNKHEADERSIZE = 3,
 	NET_PACKETHEADERSIZE = 3,
 	NET_CONNLESS_EXTRA_SIZE = 4,
-	NET_MAX_CLIENTS = 64,
+	NET_MAX_CLIENTS = 128,
 	NET_MAX_CONSOLE_CLIENTS = 4,
 	NET_MAX_SEQUENCE = 1 << 10,
 	NET_MAX_PACKET_CHUNKS = 0xFF,
@@ -146,6 +146,8 @@ struct CNetChunk
 	const void *m_pData;
 	// only used if the flags contain NETSENDFLAG_EXTENDED and NETSENDFLAG_CONNLESS
 	unsigned char m_aExtraData[NET_CONNLESS_EXTRA_SIZE];
+
+	void AssertSizeSanity() const;
 };
 
 class CNetChunkHeader
@@ -178,7 +180,7 @@ public:
 	int m_Ack;
 	int m_NumChunks;
 	int m_DataSize;
-	unsigned char m_aChunkData[NET_MAX_PAYLOAD];
+	unsigned char m_aChunkData[NET_MAX_PACKETSIZE - NET_PACKETHEADERSIZE];
 	unsigned char m_aExtraData[NET_CONNLESS_EXTRA_SIZE];
 };
 
@@ -278,6 +280,7 @@ private:
 	bool IsSixup() const { return m_Sixup; }
 
 	//
+	bool IsPeerAddress(const NETADDR &Addr) const;
 	void SetPeerAddr(const NETADDR *pAddr);
 	void ClearPeerAddr();
 	void ResetStats();
@@ -433,6 +436,9 @@ class CNetServer
 	int m_MaxClients = NET_MAX_CLIENTS;
 	int m_MaxClientsPerIp;
 
+	bool m_FlushBatch = false;
+	bool m_aFlushPending[NET_MAX_CLIENTS] = {};
+
 	NETFUNC_NEWCLIENT m_pfnNewClient;
 	NETFUNC_NEWCLIENT_NOAUTH m_pfnNewClientNoAuth;
 	NETFUNC_DELCLIENT m_pfnDelClient;
@@ -475,6 +481,13 @@ public:
 	int Recv(CNetChunk *pChunk, SECURITY_TOKEN *pResponseToken);
 	int Send(CNetChunk *pChunk);
 	void Update();
+
+	// While a flush batch is open, sends requesting MSGFLAG_FLUSH only queue
+	// their chunk and mark the connection; EndFlushBatch() then flushes each
+	// marked connection once. Used to coalesce the flushes triggered while
+	// draining a burst of incoming packets into one packet per recipient.
+	void BeginFlushBatch() { m_FlushBatch = true; }
+	void EndFlushBatch();
 
 	//
 	void Drop(int ClientId, const char *pReason);
@@ -560,7 +573,7 @@ private:
 	public:
 		NETADDR m_Addr;
 		int m_DataSize;
-		unsigned char m_aData[NET_MAX_PAYLOAD];
+		unsigned char m_aData[NET_MAX_CONNLESS_PAYLOAD];
 		int64_t m_Expiry;
 	};
 

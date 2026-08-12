@@ -152,13 +152,25 @@ bool CSnapshot::IsValid(size_t ActualSize) const
 	// validate item offsets
 	const int *pOffsets = Offsets();
 	for(int Index = 0; Index < m_NumItems; Index++)
-		if(pOffsets[Index] < 0 || pOffsets[Index] > m_DataSize)
+	{
+		if(pOffsets[Index] < 0 ||
+			pOffsets[Index] > m_DataSize ||
+			pOffsets[Index] % sizeof(int32_t) != 0)
+		{
 			return false;
+		}
+	}
 
 	// validate item sizes
 	for(int Index = 0; Index < m_NumItems; Index++)
-		if(GetItemSize(Index) < 0) // the offsets must be validated before using this
+	{
+		const int ItemSize = GetItemSize(Index); // the offsets must be validated before using this
+		if(ItemSize < 0 ||
+			ItemSize % sizeof(int32_t) != 0)
+		{
 			return false;
+		}
+	}
 
 	return true;
 }
@@ -694,15 +706,22 @@ void CSnapshotStorage::Add(int Tick, int64_t Tagtime, size_t DataSize, const voi
 	pHolder->m_pNext = nullptr;
 	pHolder->m_pPrev = m_pLast;
 	if(m_pLast)
+	{
+		dbg_assert(m_pLast->m_Tick < Tick, "snapshots inserted into CSnapshotStorage with non-increasing tick %d >= %d", m_pLast->m_Tick, Tick);
 		m_pLast->m_pNext = pHolder;
+	}
 	else
+	{
 		m_pFirst = pHolder;
+	}
 	m_pLast = pHolder;
 }
 
 int CSnapshotStorage::Get(int Tick, int64_t *pTagtime, const CSnapshot **ppData, const CSnapshot **ppAltData) const
 {
-	CHolder *pHolder = m_pFirst;
+	// the list is sorted by tick and the queried tick is usually one of the
+	// most recently added ones, so search backwards starting at the newest
+	CHolder *pHolder = m_pLast;
 
 	while(pHolder)
 	{
@@ -716,8 +735,10 @@ int CSnapshotStorage::Get(int Tick, int64_t *pTagtime, const CSnapshot **ppData,
 				*ppAltData = pHolder->m_pAltSnap;
 			return pHolder->m_SnapSize;
 		}
+		if(pHolder->m_Tick < Tick)
+			return -1; // all remaining snapshots are even older
 
-		pHolder = pHolder->m_pNext;
+		pHolder = pHolder->m_pPrev;
 	}
 
 	return -1;
@@ -869,7 +890,7 @@ void *CSnapshotBuilder::NewItemRaw(int Type, int Id, int Size)
 	const bool Extended = Type >= OFFSET_UUID;
 	dbg_assert((Type >= 0 && Type <= CSnapshot::MAX_TYPE) || Extended || (m_Sixup && Type >= -CSnapshot::MAX_TYPE && Type < 0), "Invalid snap item Type: %d", Type);
 	dbg_assert(Id >= 0 && Id <= CSnapshot::MAX_ID, "Invalid snap item Id: %d", Id);
-	dbg_assert(Size >= 0 && (size_t)Size <= CSnapshot::MAX_SIZE - sizeof(CSnapshot) - sizeof(CSnapshotItem) - sizeof(int), "Invalid snap item Size: %d", Size);
+	dbg_assert(Size >= 0 && (size_t)Size <= CSnapshot::MAX_SIZE - sizeof(CSnapshot) - sizeof(CSnapshotItem) - sizeof(int) && Size % sizeof(int32_t) == 0, "Invalid snap item Size: %d", Size);
 
 	if(m_NumItems >= CSnapshot::MAX_ITEMS)
 	{
