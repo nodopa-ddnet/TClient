@@ -168,13 +168,19 @@ void CMenus::RenderSettingsTee(CUIRect MainView)
 			}
 		}
 	}
+	CUIRect RandomColorsButton;
 
 	// Player skin area
 	CUIRect CustomColorsButton, RandomSkinButton;
 	YourSkin.HSplitTop(20.0f, &Label, &YourSkin);
 	YourSkin.HSplitBottom(20.0f, &YourSkin, &CustomColorsButton);
+
 	CustomColorsButton.VSplitRight(30.0f, &CustomColorsButton, &RandomSkinButton);
-	CustomColorsButton.VSplitRight(20.0f, &CustomColorsButton, nullptr);
+	CustomColorsButton.VSplitRight(3.0f, &CustomColorsButton, 0);
+
+	CustomColorsButton.VSplitRight(110.0f, &CustomColorsButton, &RandomColorsButton);
+
+	CustomColorsButton.VSplitRight(5.0f, &CustomColorsButton, nullptr);
 	YourSkin.VSplitLeft(65.0f, &YourSkin, &Button);
 	Button.VSplitLeft(5.0f, nullptr, &Button);
 	Button.HMargin((Button.h - 20.0f) / 2.0f, &Button);
@@ -284,6 +290,27 @@ void CMenus::RenderSettingsTee(CUIRect MainView)
 	TextRender()->SetRenderFlags(0);
 	TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
 	GameClient()->m_Tooltips.DoToolTip(&s_RandomSkinButton, &RandomSkinButton, Localize("Create a random skin"));
+
+	static CButtonContainer s_RandomizeColors;
+	if(*pUseCustomColor)
+	{
+		// RandomColorsButton.VSplitLeft(120.0f, &RandomColorsButton, 0);
+		if(DoButton_Menu(&s_RandomizeColors, "Random Colors", 0, &RandomColorsButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.5f)))
+		{
+			if(m_Dummy)
+			{
+				g_Config.m_ClDummyColorBody = ColorHSLA((std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f, 1).Pack(false);
+				g_Config.m_ClDummyColorFeet = ColorHSLA((std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f, 1).Pack(false);
+			}
+			else
+			{
+				g_Config.m_ClPlayerColorBody = ColorHSLA((std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f, 1).Pack(false);
+				g_Config.m_ClPlayerColorFeet = ColorHSLA((std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f, 1).Pack(false);
+			}
+			SetNeedSendInfo();
+		}
+	}
+	MainView.HSplitTop(5.0f, 0, &MainView);
 
 	// Custom colors button
 	if(DoButton_CheckBox(pUseCustomColor, Localize("Custom colors"), *pUseCustomColor, &CustomColorsButton))

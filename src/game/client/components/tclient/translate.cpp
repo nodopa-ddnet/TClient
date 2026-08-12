@@ -1,5 +1,6 @@
 #include "translate.h"
 
+#include <base/dbg.h>
 #include <base/log.h>
 
 #include <engine/shared/json.h>
@@ -59,19 +60,18 @@ bool ITranslateBackend::CompareTargets(const char *pA, const char *pB) const
 class ITranslateBackendHttp : public ITranslateBackend
 {
 protected:
-	std::shared_ptr<CHttpRequest> m_pHttpRequest = nullptr;
+	std::shared_ptr<IHttpRequest> m_pHttpRequest = nullptr;
 	virtual bool ParseResponse(CTranslateResponse &Out) = 0;
 	virtual bool ParseHttpError() const { return false; }
 
 	void CreateHttpRequest(IHttp &Http, const char *pUrl)
 	{
-		auto pGet = std::make_shared<CHttpRequest>(pUrl);
-		pGet->LogProgress(HTTPLOG::FAILURE);
-		pGet->FailOnErrorStatus(false);
-		pGet->Timeout(CTimeout{10000, 0, 500, 10});
+		m_pHttpRequest = HttpGet(pUrl);
+		m_pHttpRequest->LogProgress(HTTPLOG::FAILURE);
+		m_pHttpRequest->FailOnErrorStatus(false);
+		m_pHttpRequest->Timeout(CTimeout{10000, 0, 500, 10});
 
-		m_pHttpRequest = pGet;
-		Http.Run(pGet);
+		Http.Run(m_pHttpRequest);
 	}
 
 public:

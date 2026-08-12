@@ -23,6 +23,7 @@ class CPlayers : public CComponent
 		int ClientId,
 		float Intra = 0.f);
 	void RenderPlayerGhost(
+		const CScreenRect &ScreenRect,
 		const CNetObj_Character *pPrevChar,
 		const CNetObj_Character *pPlayerChar,
 		const CTeeRenderInfo *pRenderInfo,

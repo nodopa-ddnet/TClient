@@ -818,8 +818,11 @@ void CTClient::RenderCenterLines()
 
 	Graphics()->TextureClear();
 
-	float X0, Y0, X1, Y1;
-	Graphics()->GetScreen(&X0, &Y0, &X1, &Y1);
+	const CScreenRect ScreenRect = Graphics()->GetScreen();
+	const float X0 = ScreenRect.m_TopLeft.x;
+	const float Y0 = ScreenRect.m_TopLeft.y;
+	const float X1 = ScreenRect.m_BottomRight.x;
+	const float Y1 = ScreenRect.m_BottomRight.y;
 	const float XMid = (X0 + X1) / 2.0f;
 	const float YMid = (Y0 + Y1) / 2.0f;
 
